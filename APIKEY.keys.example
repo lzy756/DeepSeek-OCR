@@ -1,0 +1,28 @@
+# DeepSeek-OCR API Keys
+# 
+# This file stores valid API keys for authentication.
+# Format: One key per line
+# Comments (lines starting with #) and empty lines are ignored.
+#
+# To add a new key:
+# 1. Generate a secure key: python -c "import secrets; print(secrets.token_urlsafe(48))"
+# 2. Add the key on a new line below
+# 3. No restart needed - changes are loaded on each request
+#
+# To remove a key:
+# 1. Delete the line containing the key
+# 2. Key is immediately invalidated
+#
+# Key rotation (no downtime):
+# 1. Add new key below
+# 2. Update clients to use new key
+# 3. Remove old key after migration complete
+
+# Example production key (replace with actual generated key)
+AbCdEfGh123456_IjKlMnOp789012-QrStUvWxYz345678_AbCdEfGh901234
+
+# Example development key (replace with actual generated key)
+# XyZ987_MnOpQr654321-StUvWxYzAbCd987654_EfGhIjKl321098_DEFG
+
+# Example mobile app key (replace with actual generated key)
+# PqRsTuVwXyZ123_AbCdEfGh456789-IjKlMnOpQr012345_StUvWx678901

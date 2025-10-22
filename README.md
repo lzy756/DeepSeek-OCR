@@ -56,6 +56,7 @@
 
 ## Contents
 - [Install](#install)
+- [API Service](#api-service) ⭐ NEW!
 - [vLLM Inference](#vllm-inference)
 - [Transformers Inference](#transformers-inference)
   
@@ -84,6 +85,89 @@ pip install -r requirements.txt
 pip install flash-attn==2.7.3 --no-build-isolation
 ```
 **Note:** if you want vLLM and transformers codes to run in the same environment, you don't need to worry about this installation error like: vllm 0.8.5+cu118 requires transformers>=4.51.1
+
+## API Service
+
+⭐ **NEW**: RESTful API service for easy integration!
+
+### Quick Start
+
+```bash
+# Install API dependencies
+pip install fastapi uvicorn[standard] python-multipart pydantic pydantic-settings aiofiles httpx
+
+# Start the API service
+bash api/start.sh
+```
+
+On first startup, an API key is automatically generated and displayed:
+
+```
+============================================================
+  API KEY GENERATED (SAVE THIS!):
+  ------------------------------------------------------------
+  AbCdEfGh123456_IjKlMnOp789012-QrStUvWxYz345678_AbCdEfGh901234
+  ------------------------------------------------------------
+============================================================
+```
+
+### API Documentation
+
+- **Interactive Docs**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **Health Check**: http://localhost:8000/health
+
+### Example Usage
+
+```bash
+# OCR an image (returns ZIP file)
+curl -X POST http://localhost:8000/api/v1/ocr/image \
+  -H "X-API-Key: YOUR_KEY" \
+  -F "file=@image.jpg" \
+  -F "mode=document_markdown" \
+  -F "resolution_preset=Gundam" \
+  -o result.zip
+
+# OCR a PDF asynchronously
+curl -X POST http://localhost:8000/api/v1/ocr/pdf/async \
+  -H "X-API-Key: YOUR_KEY" \
+  -F "file=@document.pdf" \
+  -F "mode=document_markdown"
+```
+
+### Features
+
+- ✅ Multiple input formats (file upload, Base64, URL)
+- ✅ Async processing for large PDFs
+- ✅ All OCR modes and resolution presets supported
+- ✅ API Key authentication (auto-generated)
+- ✅ ZIP response format with all results
+- ✅ Interactive API documentation
+
+📖 **Full API documentation**: See [`api/README.md`](api/README.md)
+
+### Python Client Example
+
+```python
+import requests
+
+API_KEY = "your-api-key-here"
+HEADERS = {"X-API-Key": API_KEY}
+
+# OCR image
+with open("image.jpg", "rb") as f:
+    response = requests.post(
+        "http://localhost:8000/api/v1/ocr/image",
+        headers=HEADERS,
+        files={"file": f},
+        data={"mode": "document_markdown", "resolution_preset": "Gundam"}
+    )
+    
+    with open("result.zip", "wb") as out:
+        out.write(response.content)
+```
+
+More examples in `api/examples/`
 
 ## vLLM-Inference
 - VLLM:

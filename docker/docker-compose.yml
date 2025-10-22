@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  deepseek-ocr-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: deepseek-ocr-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount model directory (read-only)
+      - ../deepseek_ocr:/app/deepseek_ocr:ro
+      # Mount input/output directories
+      - ../input:/app/input
+      - ../output:/app/output
+      # Mount API key file (persistent)
+      - ./apikey:/app/apikey
+    environment:
+      - MODEL_PATH=deepseek_ocr/
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - MAX_CONCURRENCY=100
+      - APIKEY_FILE=apikey/APIKEY.keys
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  apikey:
+    driver: local
