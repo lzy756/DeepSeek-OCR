@@ -77,7 +77,11 @@ async def ocr_image(
         
         image = await load_image_from_sources(file_bytes, image_base64, image_url)
         validate_image(image)
-        
+
+        # formulate all images to RGB
+        if image.mode in ("RGBA", "P", "LA"):
+            image = image.convert("RGB")
+
         # Get resolution config
         base_size, image_size, crop_mode = _get_resolution_config(resolution_preset, None)
         
