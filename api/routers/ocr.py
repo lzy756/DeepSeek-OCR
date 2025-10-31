@@ -1,4 +1,5 @@
 """OCR API Endpoints"""
+import asyncio
 import time
 from pathlib import Path
 from typing import Optional
@@ -267,47 +268,73 @@ async def ocr_pdf_async(
         # Get resolution config
         base_size, image_size, crop_mode = _get_resolution_config(resolution_preset, None)
         
-        # Create async task
+        # Create async task function (not coroutine!)
         async def process_pdf():
-            # Convert to images
-            images = pdf_to_images_high_quality(pdf_bytes, dpi)
-            
-            # Get inference service
-            service = await get_inference_service()
-            
-            # Run inference
-            output_dir = await service.infer_pdf(
-                images=images,
-                mode=mode,
-                custom_prompt=custom_prompt,
-                base_size=base_size,
-                image_size=image_size,
-                crop_mode=crop_mode
-            )
-            
-            # Create ZIP in output directory
-            timestamp = int(time.time())
-            zip_path = output_dir / f"result_{timestamp}.zip"
-            
-            metadata = {
-                "model": "DeepSeek-OCR",
-                "mode": mode,
-                "resolution": resolution_preset or f"{base_size}x{image_size}",
-                "timestamp": time.time(),
-                "input_info": {
-                    "type": "pdf",
-                    "pages": page_count
+            try:
+                # print(f"[Task] Starting PDF processing: {page_count} pages")
+                
+                # Convert to images in executor to avoid blocking
+                # print(f"[Task] Converting PDF to images...")
+                images = await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    pdf_to_images_high_quality,
+                    pdf_bytes,
+                    dpi
+                )
+                # print(f"[Task] Converted {len(images)} images")
+                
+                # Get inference service
+                service = await get_inference_service()
+                # print(f"[Task] Starting OCR inference on {len(images)} pages...")
+                
+                # Run inference
+                output_dir = await service.infer_pdf(
+                    images=images,
+                    mode=mode,
+                    custom_prompt=custom_prompt,
+                    base_size=base_size,
+                    image_size=image_size,
+                    crop_mode=crop_mode
+                )
+                # print(f"[Task] OCR inference completed, output_dir: {output_dir}")
+                
+                # Create ZIP in output directory (in executor to avoid blocking)
+                # print(f"[Task] Creating result ZIP...")
+                timestamp = int(time.time())
+                zip_path = output_dir / f"result_{timestamp}.zip"
+                
+                metadata = {
+                    "model": "DeepSeek-OCR",
+                    "mode": mode,
+                    "resolution": resolution_preset or f"{base_size}x{image_size}",
+                    "timestamp": time.time(),
+                    "input_info": {
+                        "type": "pdf",
+                        "pages": page_count
+                    }
                 }
-            }
-            
-            create_result_zip(output_dir, zip_path, metadata)
-            
-            # Return ZIP path (output_dir will contain the ZIP)
-            return output_dir
+                
+                # Run ZIP creation in executor to avoid blocking
+                await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    create_result_zip,
+                    output_dir,
+                    zip_path,
+                    metadata
+                )
+                # print(f"[Task] ZIP created successfully: {zip_path}")
+                
+                # Return output directory (which now contains the ZIP)
+                return output_dir
+            except Exception as e:
+                print(f"[Task] Error in process_pdf: {type(e).__name__}: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
         
-        # Submit task
+        # Submit task - pass function reference, not executed coroutine
         task_queue = await get_task_queue()
-        task_id = await task_queue.submit_task(process_pdf())
+        task_id = await task_queue.submit_task(process_pdf)
         
         # Get task info
         task = await task_queue.get_task(task_id)

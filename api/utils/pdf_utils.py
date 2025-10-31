@@ -88,6 +88,7 @@ def pdf_to_images_high_quality(pdf_bytes: bytes, dpi: int = 144) -> List[Image.I
     Raises:
         ValueError: If conversion fails
     """
+    doc = None
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         images = []
@@ -104,11 +105,20 @@ def pdf_to_images_high_quality(pdf_bytes: bytes, dpi: int = 144) -> List[Image.I
             img_data = pix.tobytes("png")
             img = Image.open(io.BytesIO(img_data))
             images.append(img)
+            
+            # Clean up pixmap to prevent memory leak
+            pix = None
         
-        doc.close()
         return images
     except Exception as e:
         raise ValueError(f"Failed to convert PDF to images: {str(e)}")
+    finally:
+        # Ensure document is always closed
+        if doc is not None:
+            try:
+                doc.close()
+            except:
+                pass
 
 
 def pil_to_pdf_img2pdf(pil_images: List[Image.Image], output_path: Path):
@@ -125,25 +135,34 @@ def pil_to_pdf_img2pdf(pil_images: List[Image.Image], output_path: Path):
     if not pil_images:
         return
     
+    # print(f"[PDF] Converting {len(pil_images)} images to PDF...")
     image_bytes_list = []
     
-    for img in pil_images:
+    for idx, img in enumerate(pil_images, 1):
         # Convert to RGB if necessary
         if img.mode != 'RGB':
             img = img.convert('RGB')
         
-        # Save to bytes buffer
+        # Save to bytes buffer with lower quality to reduce size
         img_buffer = io.BytesIO()
-        img.save(img_buffer, format='JPEG', quality=95)
+        img.save(img_buffer, format='JPEG', quality=85, optimize=True)
         img_bytes = img_buffer.getvalue()
         image_bytes_list.append(img_bytes)
+        
+        # Show progress for large PDFs
+        # if idx % 5 == 0 or idx == len(pil_images):
+        #     print(f"[PDF] Processed {idx}/{len(pil_images)} images")
     
     try:
+        # print(f"[PDF] Converting to PDF format...")
         pdf_bytes = img2pdf.convert(image_bytes_list)
         if pdf_bytes:
+            # print(f"[PDF] Writing PDF file ({len(pdf_bytes) / (1024*1024):.2f} MB)...")
             with open(output_path, "wb") as f:
                 f.write(pdf_bytes)
+            # print(f"[PDF] PDF created successfully: {output_path}")
         else:
             raise ValueError("img2pdf.convert returned None")
     except Exception as e:
+        # print(f"[PDF] Error creating PDF: {e}")
         raise ValueError(f"Failed to convert images to PDF: {str(e)}")

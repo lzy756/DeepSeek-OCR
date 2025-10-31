@@ -20,9 +20,9 @@ class TaskStatus(str, Enum):
 class Task:
     """Task object"""
     
-    def __init__(self, task_id: str, coro: Callable):
+    def __init__(self, task_id: str, coro_func: Callable):
         self.task_id = task_id
-        self.coro = coro
+        self.coro_func = coro_func  # Store the coroutine function, not the coroutine itself
         self.status = TaskStatus.PENDING
         self.progress = 0.0
         self.created_at = datetime.utcnow()
@@ -74,12 +74,12 @@ class TaskQueue:
             except asyncio.CancelledError:
                 pass
     
-    async def submit_task(self, coro: Callable) -> str:
+    async def submit_task(self, coro_func: Callable) -> str:
         """
         Submit a task to the queue.
         
         Args:
-            coro: Coroutine to execute
+            coro_func: Coroutine function (not an awaited coroutine!)
             
         Returns:
             Task ID
@@ -90,8 +90,8 @@ class TaskQueue:
         # Generate unique task ID
         task_id = str(uuid.uuid4())
         
-        # Create task
-        task = Task(task_id, coro)
+        # Create task with coroutine function
+        task = Task(task_id, coro_func)
         
         async with self._lock:
             self.tasks[task_id] = task
@@ -156,14 +156,28 @@ class TaskQueue:
                 task.started_at = datetime.utcnow()
                 
                 try:
-                    # Execute task
-                    result = await task.coro
+                    # Execute task - call the coroutine function to get the coroutine
+                    # Add timeout to prevent indefinite hanging
+                    result = await asyncio.wait_for(
+                        task.coro_func(),
+                        timeout=3600  # 1 hour timeout
+                    )
                     
                     # Mark as completed
                     task.status = TaskStatus.COMPLETED
                     task.completed_at = datetime.utcnow()
                     task.result = result
                     task.progress = 1.0
+                    
+                except asyncio.TimeoutError:
+                    # Handle timeout
+                    task.status = TaskStatus.FAILED
+                    task.completed_at = datetime.utcnow()
+                    task.error = {
+                        "message": "Task execution timed out (exceeded 1 hour)",
+                        "type": "TimeoutError"
+                    }
+                    print(f"Task {task.task_id} timed out")
                     
                 except Exception as e:
                     # Mark as failed
@@ -173,6 +187,7 @@ class TaskQueue:
                         "message": str(e),
                         "type": type(e).__name__
                     }
+                    print(f"Task {task.task_id} failed: {e}")
                 
                 finally:
                     self.queue.task_done()

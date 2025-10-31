@@ -199,27 +199,32 @@ class VLLMInferenceService:
         Returns:
             Path to output directory containing results
         """
-        async with self.semaphore:
-            # Create output directory
-            if output_dir is None:
-                timestamp = int(time.time() * 1000)
-                output_dir = Path("output") / f"pdf_{timestamp}"
-            output_dir.mkdir(parents=True, exist_ok=True)
-            (output_dir / "images").mkdir(exist_ok=True)
-            
-            # Use defaults if not specified
-            base_size = base_size or BASE_SIZE
-            image_size = image_size or IMAGE_SIZE
-            crop_mode = crop_mode if crop_mode is not None else CROP_MODE
-            
-            # Build prompt
-            prompt = build_prompt(mode, custom_prompt)
-            
-            start_time = time.time()
-            
-            # Process all pages
-            all_results = []
-            for page_idx, image in enumerate(images):
+        # Don't use semaphore here - vLLM handles concurrency internally
+        # Using semaphore can cause deadlock in async task queue
+        
+        # Create output directory
+        if output_dir is None:
+            timestamp = int(time.time() * 1000)
+            output_dir = Path("output") / f"pdf_{timestamp}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "images").mkdir(exist_ok=True)
+        
+        # Use defaults if not specified
+        base_size = base_size or BASE_SIZE
+        image_size = image_size or IMAGE_SIZE
+        crop_mode = crop_mode if crop_mode is not None else CROP_MODE
+        
+        # Build prompt
+        prompt = build_prompt(mode, custom_prompt)
+        
+        start_time = time.time()
+        
+        # Process all pages
+        all_results = []
+        for page_idx, image in enumerate(images):
+            try:
+                # print(f"[VLLMService] Processing page {page_idx + 1}/{len(images)}")
+                
                 # Tokenize image
                 if '<image>' in prompt:
                     image_features = self.processor.tokenize_with_images(
@@ -231,27 +236,42 @@ class VLLMInferenceService:
                 else:
                     image_features = ''
                 
-                # Run inference
-                loop = asyncio.get_event_loop()
-                result_text = await loop.run_in_executor(
-                    None,
-                    self._run_inference,
-                    image_features,
-                    prompt
+                # Run inference with timeout per page
+                result_text = await asyncio.wait_for(
+                    asyncio.get_running_loop().run_in_executor(
+                        None,
+                        self._run_inference,
+                        image_features,
+                        prompt
+                    ),
+                    timeout=300  # 5 minutes per page
                 )
                 
                 all_results.append((page_idx, image, result_text))
-            
-            processing_time = time.time() - start_time
-            
-            # Save merged results
-            self._save_pdf_results(
-                results=all_results,
-                output_dir=output_dir,
-                with_images='<image>' in prompt
-            )
-            
-            return output_dir
+                # print(f"[VLLMService] Page {page_idx + 1} completed")
+                
+            except asyncio.TimeoutError:
+                print(f"Warning: Page {page_idx + 1} timed out, skipping")
+                # Add error marker for this page
+                all_results.append((page_idx, image, f"[OCR ERROR: Page {page_idx + 1} processing timed out]"))
+                
+            except Exception as e:
+                print(f"Warning: Page {page_idx + 1} failed with error: {e}")
+                # Add error marker for this page
+                all_results.append((page_idx, image, f"[OCR ERROR: Page {page_idx + 1} failed: {str(e)}]"))
+        
+        processing_time = time.time() - start_time
+        # print(f"[VLLMService] All pages processed in {processing_time:.2f}s, saving results...")
+        
+        # Save merged results
+        self._save_pdf_results(
+            results=all_results,
+            output_dir=output_dir,
+            with_images='<image>' in prompt
+        )
+        
+        # print(f"[VLLMService] Results saved to {output_dir}")
+        return output_dir
     
     def _run_inference(self, image_features, prompt: str) -> str:
         """Run synchronous inference (called in executor)"""
@@ -370,16 +390,24 @@ class VLLMInferenceService:
                 all_text_clean.append(f"# Page {page_idx + 1}\n\n{result_text}\n\n<--- Page Split --->\n\n")
         
         # Save merged files
+        # print(f"[VLLMService] Writing result_ori.mmd...")
         with open(output_dir / "result_ori.mmd", 'w', encoding='utf-8') as f:
             f.write(''.join(all_text_ori))
         
+        # print(f"[VLLMService] Writing result.mmd...")
         with open(output_dir / "result.mmd", 'w', encoding='utf-8') as f:
             f.write(''.join(all_text_clean))
         
         # Generate annotated PDF if we have annotated images
         if annotated_images and with_images:
+            # print(f"[VLLMService] Generating annotated PDF with {len(annotated_images)} pages...")
             pdf_output_path = output_dir / "result_layouts.pdf"
-            pil_to_pdf_img2pdf(annotated_images, pdf_output_path)
+            try:
+                pil_to_pdf_img2pdf(annotated_images, pdf_output_path)
+                # print(f"[VLLMService] Annotated PDF created: {pdf_output_path}")
+            except Exception as e:
+                print(f"[VLLMService] Warning: Failed to create annotated PDF: {e}")
+                # Continue without PDF - not critical
     
     def _extract_refs(self, text: str):
         """Extract reference markers from text"""

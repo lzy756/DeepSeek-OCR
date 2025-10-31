@@ -23,19 +23,47 @@ def create_result_zip(
     Returns:
         Path to created ZIP file
     """
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        # Add all files from output directory
-        for file_path in output_dir.rglob('*'):
-            if file_path.is_file():
-                arcname = file_path.relative_to(output_dir)
-                zipf.write(file_path, arcname)
-        
-        # Add metadata if provided
-        if metadata:
-            metadata_json = json.dumps(metadata, indent=2, default=str)
-            zipf.writestr('metadata.json', metadata_json)
+    # print(f"[ZIP] Creating ZIP file: {zip_path}")
+    # print(f"[ZIP] Source directory: {output_dir}")
     
-    return zip_path
+    # Collect all files first to show progress
+    all_files = [f for f in output_dir.rglob('*') if f.is_file()]
+    # print(f"[ZIP] Found {len(all_files)} files to compress")
+    
+    try:
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
+            # Add all files from output directory
+            for idx, file_path in enumerate(all_files, 1):
+                arcname = file_path.relative_to(output_dir)
+                
+                # Show progress for every 10% or every file if less than 10 files
+                # if len(all_files) < 10 or idx % max(1, len(all_files) // 10) == 0:
+                #     print(f"[ZIP] Compressing {idx}/{len(all_files)}: {arcname}")
+                
+                try:
+                    zipf.write(file_path, arcname)
+                except Exception as e:
+                    print(f"[ZIP] Warning: Failed to add {arcname}: {e}")
+            
+            # Add metadata if provided
+            if metadata:
+                # print(f"[ZIP] Adding metadata.json")
+                metadata_json = json.dumps(metadata, indent=2, default=str)
+                zipf.writestr('metadata.json', metadata_json)
+        
+        zip_size = zip_path.stat().st_size
+        # print(f"[ZIP] ZIP created successfully: {zip_size / (1024*1024):.2f} MB")
+        return zip_path
+        
+    except Exception as e:
+        print(f"[ZIP] Error creating ZIP: {type(e).__name__}: {e}")
+        # Clean up partial ZIP file
+        if zip_path.exists():
+            try:
+                zip_path.unlink()
+            except:
+                pass
+        raise
 
 
 def add_metadata_to_zip(zip_path: Path, metadata: Dict[str, Any]) -> None:
