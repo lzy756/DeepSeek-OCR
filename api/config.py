@@ -59,5 +59,5 @@ RESOLUTION_PRESETS = {
 # CORS Configuration
 CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*').split(',')
 CORS_ALLOW_CREDENTIALS = os.getenv('CORS_ALLOW_CREDENTIALS', 'true').lower() == 'true'
-CORS_ALLOW_METHODS = ["*"]
-CORS_ALLOW_HEADERS = ["*"]
+CORS_ALLOW_METHODS = ["GET", "POST", "OPTIONS"]
+CORS_ALLOW_HEADERS = ["X-API-Key", "Content-Type", "Accept"]

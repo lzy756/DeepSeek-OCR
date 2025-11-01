@@ -33,7 +33,11 @@ def save_api_key(api_key: str, file_path: str) -> None:
         f.write(api_key)
     
     # Set file permissions to 600 (owner read/write only)
-    os.chmod(file_path_obj, 0o600)
+    try:
+        os.chmod(file_path_obj, 0o600)
+    except OSError as e:
+        print(f"Warning: Failed to set file permissions: {e}")
+        # Continue execution but log warning
 
 
 def load_api_keys(file_path: str) -> List[str]:

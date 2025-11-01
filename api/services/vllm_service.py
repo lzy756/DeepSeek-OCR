@@ -10,8 +10,16 @@ import numpy as np
 from datetime import datetime
 
 import torch
-if torch.version.cuda == '11.8':
-    os.environ["TRITON_PTXAS_PATH"] = "/usr/local/cuda-11.8/bin/ptxas"
+import ast
+try:
+    cuda_version = torch.version.cuda
+    if cuda_version and cuda_version.startswith('11.8'):
+        ptxas_path = os.getenv('TRITON_PTXAS_PATH_PATH', '/usr/local/cuda-11.8/bin/ptxas')
+        if os.path.exists(ptxas_path):
+            os.environ["TRITON_PTXAS_PATH"] = ptxas_path
+except (AttributeError, TypeError):
+    # 没有CUDA或者版本检查失败，继续执行
+    pass
 
 os.environ['VLLM_USE_V1'] = '0'
 
@@ -21,7 +29,21 @@ from vllm.model_executor.models.registry import ModelRegistry
 
 # Import from existing codebase
 import sys
-sys.path.append(str(Path(__file__).parent.parent.parent / "DeepSeek-OCR-master" / "DeepSeek-OCR-vllm"))
+try:
+    base_path = Path(__file__).parent.parent.parent / "DeepSeek-OCR-master" / "DeepSeek-OCR-vllm"
+    if base_path.exists():
+        sys.path.append(str(base_path))
+    else:
+        print(f"Warning: DeepSeek-OCR path not found: {base_path}")
+        # Try alternative path
+        alt_path = Path(__file__).parent.parent.parent.parent / "DeepSeek-OCR-master" / "DeepSeek-OCR-vllm"
+        if alt_path.exists():
+            sys.path.append(str(alt_path))
+        else:
+            print(f"Warning: Alternative DeepSeek-OCR path not found: {alt_path}")
+except Exception as e:
+    print(f"Warning: Failed to setup DeepSeek-OCR path: {e}")
+    # Continue without the path - imports may fail but won't crash startup
 
 from deepseek_ocr import DeepseekOCRForCausalLM
 from process.ngram_norepeat import NoRepeatNGramLogitsProcessor
@@ -199,15 +221,14 @@ class VLLMInferenceService:
         Returns:
             Path to output directory containing results
         """
-        # Don't use semaphore here - vLLM handles concurrency internally
-        # Using semaphore can cause deadlock in async task queue
-        
-        # Create output directory
-        if output_dir is None:
-            timestamp = int(time.time() * 1000)
-            output_dir = Path("output") / f"pdf_{timestamp}"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / "images").mkdir(exist_ok=True)
+        # Add semaphore control to prevent GPU memory overflow
+        async with self.semaphore:
+            # Create output directory
+            if output_dir is None:
+                timestamp = int(time.time() * 1000)
+                output_dir = Path("output") / f"pdf_{timestamp}"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "images").mkdir(exist_ok=True)
         
         # Use defaults if not specified
         base_size = base_size or BASE_SIZE
@@ -244,7 +265,7 @@ class VLLMInferenceService:
                         image_features,
                         prompt
                     ),
-                    timeout=300  # 5 minutes per page
+                    timeout=120  # 2 minutes per page (reduced from 5 minutes)
                 )
                 
                 all_results.append((page_idx, image, result_text))
@@ -300,6 +321,8 @@ class VLLMInferenceService:
             request = {"prompt": prompt}
         
         outputs = self.llm.generate(request, sampling_params)
+        if not outputs or not outputs[0].outputs:
+            raise RuntimeError("Model returned empty results")
         return outputs[0].outputs[0].text
     
     def _save_image_results(
@@ -437,7 +460,11 @@ class VLLMInferenceService:
         for ref in refs:
             try:
                 label_type = ref[1]
-                cor_list = eval(ref[2])
+                try:
+                    cor_list = ast.literal_eval(ref[2])
+                except (ValueError, SyntaxError) as e:
+                    print(f"Warning: Failed to parse coordinates: {e}")
+                    continue
                 
                 color = (np.random.randint(0, 200), np.random.randint(0, 200), np.random.randint(0, 255))
                 color_a = color + (20,)
@@ -487,18 +514,23 @@ class VLLMInferenceService:
                 pattern = r'<\|ref\|>(.*?)<\|/ref\|><\|det\|>(.*?)<\|/det\|>'
                 result = re.search(pattern, match, re.DOTALL)
                 if result:
-                    cor_list = eval(result.group(2))
-                    for points in cor_list:
-                        x1, y1, x2, y2 = points
-                        x1 = int(x1 / 999 * image_width)
-                        y1 = int(y1 / 999 * image_height)
-                        x2 = int(x2 / 999 * image_width)
-                        y2 = int(y2 / 999 * image_height)
-                        
-                        cropped = image.crop((x1, y1, x2, y2))
-                        cropped.save(output_dir / f"{prefix}{idx}.jpg")
-                        break  # Only first box
-            except:
+                    try:
+                        cor_list = ast.literal_eval(result.group(2))
+                        for points in cor_list:
+                            x1, y1, x2, y2 = points
+                            x1 = int(x1 / 999 * image_width)
+                            y1 = int(y1 / 999 * image_height)
+                            x2 = int(x2 / 999 * image_width)
+                            y2 = int(y2 / 999 * image_height)
+                            
+                            cropped = image.crop((x1, y1, x2, y2))
+                            cropped.save(output_dir / f"{prefix}{idx}.jpg")
+                            break  # Only first box
+                    except (ValueError, SyntaxError) as e:
+                        print(f"Warning: Failed to parse coordinates for embedded image: {e}")
+                        continue
+            except Exception as e:
+                print(f"Warning: Failed to extract embedded image: {e}")
                 continue
     
     def get_model_info(self) -> Dict[str, Any]:

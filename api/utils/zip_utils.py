@@ -57,13 +57,21 @@ def create_result_zip(
         
     except Exception as e:
         print(f"[ZIP] Error creating ZIP: {type(e).__name__}: {e}")
-        # Clean up partial ZIP file
+        # Clean up partial ZIP file and temporary files
         if zip_path.exists():
             try:
                 zip_path.unlink()
-            except:
-                pass
-        raise
+            except Exception as cleanup_error:
+                print(f"[ZIP] Warning: Failed to cleanup partial ZIP file: {cleanup_error}")
+        
+        # Clean up source directory if it contains partial files
+        if output_dir.exists():
+            try:
+                import shutil
+                shutil.rmtree(output_dir)
+            except Exception as cleanup_error:
+                print(f"[ZIP] Warning: Failed to cleanup output directory: {cleanup_error}")
+        raise ValueError(f"Failed to create ZIP file: {str(e)}")
 
 
 def add_metadata_to_zip(zip_path: Path, metadata: Dict[str, Any]) -> None:

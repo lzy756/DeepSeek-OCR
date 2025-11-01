@@ -48,6 +48,7 @@ async def ocr_image(
     mode: str = Form("document_markdown"),
     custom_prompt: Optional[str] = Form(None),
     resolution_preset: Optional[str] = Form(None),
+    resolution_config: Optional[ResolutionConfig] = Form(None),
 ):
     """
     Perform OCR on a single image (requires authentication).
@@ -68,12 +69,13 @@ async def ocr_image(
         # Load image from one of the sources
         file_bytes = None
         if file:
-            content = await file.read()
-            if len(content) > MAX_FILE_SIZE_BYTES:
+            # Pre-check file size before reading
+            if file.size and file.size > MAX_FILE_SIZE_BYTES:
                 raise HTTPException(
                     status_code=413,
                     detail=f"File too large. Maximum size: {MAX_FILE_SIZE_BYTES / (1024*1024):.0f}MB"
                 )
+            content = await file.read()
             file_bytes = content
         
         image = await load_image_from_sources(file_bytes, image_base64, image_url)
@@ -84,7 +86,7 @@ async def ocr_image(
             image = image.convert("RGB")
 
         # Get resolution config
-        base_size, image_size, crop_mode = _get_resolution_config(resolution_preset, None)
+        base_size, image_size, crop_mode = _get_resolution_config(resolution_preset, resolution_config)
         
         # Get inference service
         service = await get_inference_service()
@@ -140,6 +142,7 @@ async def ocr_pdf(
     mode: str = Form("document_markdown"),
     custom_prompt: Optional[str] = Form(None),
     resolution_preset: Optional[str] = Form(None),
+    resolution_config: Optional[ResolutionConfig] = Form(None),
     max_pages: Optional[int] = Form(None),
     dpi: int = Form(PDF_DPI),
 ):
@@ -162,12 +165,13 @@ async def ocr_pdf(
         # Load PDF
         file_bytes = None
         if file:
-            content = await file.read()
-            if len(content) > MAX_FILE_SIZE_BYTES:
+            # Pre-check file size before reading
+            if file.size and file.size > MAX_FILE_SIZE_BYTES:
                 raise HTTPException(
                     status_code=413,
                     detail=f"File too large. Maximum size: {MAX_FILE_SIZE_BYTES / (1024*1024):.0f}MB"
                 )
+            content = await file.read()
             file_bytes = content
         
         pdf_bytes = await load_pdf_from_sources(file_bytes, pdf_url)
@@ -180,7 +184,7 @@ async def ocr_pdf(
         images = pdf_to_images_high_quality(pdf_bytes, dpi)
         
         # Get resolution config
-        base_size, image_size, crop_mode = _get_resolution_config(resolution_preset, None)
+        base_size, image_size, crop_mode = _get_resolution_config(resolution_preset, resolution_config)
         
         # Get inference service
         service = await get_inference_service()
@@ -236,6 +240,7 @@ async def ocr_pdf_async(
     mode: str = Form("document_markdown"),
     custom_prompt: Optional[str] = Form(None),
     resolution_preset: Optional[str] = Form(None),
+    resolution_config: Optional[ResolutionConfig] = Form(None),
     max_pages: Optional[int] = Form(None),
     dpi: int = Form(PDF_DPI),
 ):
@@ -253,12 +258,13 @@ async def ocr_pdf_async(
         # Load and validate PDF (synchronous validation)
         file_bytes = None
         if file:
-            content = await file.read()
-            if len(content) > MAX_FILE_SIZE_BYTES:
+            # Pre-check file size before reading
+            if file.size and file.size > MAX_FILE_SIZE_BYTES:
                 raise HTTPException(
                     status_code=413,
                     detail=f"File too large. Maximum size: {MAX_FILE_SIZE_BYTES / (1024*1024):.0f}MB"
                 )
+            content = await file.read()
             file_bytes = content
         
         pdf_bytes = await load_pdf_from_sources(file_bytes, pdf_url)
@@ -266,7 +272,7 @@ async def ocr_pdf_async(
         page_count = validate_pdf(pdf_bytes, max_pages_limit)
         
         # Get resolution config
-        base_size, image_size, crop_mode = _get_resolution_config(resolution_preset, None)
+        base_size, image_size, crop_mode = _get_resolution_config(resolution_preset, resolution_config)
         
         # Create async task function (not coroutine!)
         async def process_pdf():

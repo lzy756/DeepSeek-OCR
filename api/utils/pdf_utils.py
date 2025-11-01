@@ -108,6 +108,7 @@ def pdf_to_images_high_quality(pdf_bytes: bytes, dpi: int = 144) -> List[Image.I
             
             # Clean up pixmap to prevent memory leak
             pix = None
+            page = None
         
         return images
     except Exception as e:
@@ -117,7 +118,9 @@ def pdf_to_images_high_quality(pdf_bytes: bytes, dpi: int = 144) -> List[Image.I
         if doc is not None:
             try:
                 doc.close()
-            except:
+                doc = None
+            except Exception as e:
+                print(f"Warning: Failed to close PDF document: {e}")
                 pass
 
 
