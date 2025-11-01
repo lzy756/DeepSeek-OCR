@@ -162,6 +162,7 @@ class VLLMInferenceService:
             # Tokenize image
             if '<image>' in prompt:
                 image_features = self.processor.tokenize_with_images(
+                    prompt=prompt,  # Pass the prompt parameter
                     images=[image.convert('RGB')],
                     bos=True,
                     eos=True,
@@ -249,6 +250,7 @@ class VLLMInferenceService:
                 # Tokenize image
                 if '<image>' in prompt:
                     image_features = self.processor.tokenize_with_images(
+                        prompt=prompt,  # Pass the prompt parameter
                         images=[image.convert('RGB')],
                         bos=True,
                         eos=True,
@@ -296,6 +298,28 @@ class VLLMInferenceService:
     
     def _run_inference(self, image_features, prompt: str) -> str:
         """Run synchronous inference (called in executor)"""
+        # print(f"[DEBUG] _run_inference called")
+        # print(f"[DEBUG] prompt = {repr(prompt)}")
+        # print(f"[DEBUG] '<image>' in prompt = {'<image>' in prompt}")
+        # print(f"[DEBUG] image_features type = {type(image_features)}")
+        # if image_features:
+        #     print(f"[DEBUG] image_features length = {len(image_features)}")
+        #     if isinstance(image_features, list) and len(image_features) > 0:
+        #         print(f"[DEBUG] image_features[0] length = {len(image_features[0])}")
+        #         # 新增：打印image_features[0]的详细信息
+        #         input_ids, pixel_values, images_crop, images_seq_mask, images_spatial_crop, num_image_tokens, image_shapes = image_features[0]
+        #         print(f"[DEBUG] input_ids shape = {input_ids.shape}")
+        #         print(f"[DEBUG] pixel_values shape = {pixel_values.shape}")
+        #         print(f"[DEBUG] images_crop shape = {images_crop.shape}")
+        #         print(f"[DEBUG] images_spatial_crop = {images_spatial_crop}")
+        #         print(f"[DEBUG] num_image_tokens = {num_image_tokens}")
+        #         print(f"[DEBUG] image_shapes = {image_shapes}")
+        #         # 统计input_ids中image token的数量
+        #         image_token_id = self.processor.image_token_id
+        #         image_token_count = (input_ids == image_token_id).sum().item()
+        #         print(f"[DEBUG] image_token_id = {image_token_id}")
+        #         print(f"[DEBUG] image tokens in input_ids = {image_token_count}")        
+    
         logits_processors = [
             NoRepeatNGramLogitsProcessor(
                 ngram_size=20,

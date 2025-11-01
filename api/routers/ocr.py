@@ -35,8 +35,8 @@ def _get_resolution_config(
         preset = RESOLUTION_PRESETS[resolution_preset]
         return preset["base_size"], preset["image_size"], preset["crop_mode"]
     
-    # Default: Base preset
-    preset = RESOLUTION_PRESETS["Base"]
+    # Default: Gundam preset
+    preset = RESOLUTION_PRESETS["Gundam"]
     return preset["base_size"], preset["image_size"], preset["crop_mode"]
 
 
