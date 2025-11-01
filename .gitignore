@@ -63,3 +63,7 @@ output/
 # prebuilt dependencies
 *.tar.gz
 *.whl
+
+# frp
+frpc
+frpc.*
